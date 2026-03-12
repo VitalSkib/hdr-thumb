@@ -331,6 +331,13 @@ static void RegSetSZ(HKEY root,const wchar_t*path,const wchar_t*val,const wchar_
     RegCloseKey(hk);
 }
 
+static void RegSetDWORD(HKEY root,const wchar_t*path,const wchar_t*val,DWORD data){
+    HKEY hk;
+    RegCreateKeyExW(root,path,0,NULL,0,KEY_SET_VALUE|KEY_CREATE_SUB_KEY,NULL,&hk,NULL);
+    RegSetValueExW(hk,val,0,REG_DWORD,(const BYTE*)&data,sizeof(DWORD));
+    RegCloseKey(hk);
+}
+
 extern "C" __declspec(dllexport)
 HRESULT WINAPI DllRegisterServer(void){
     wchar_t dll[MAX_PATH];
@@ -346,6 +353,8 @@ HRESULT WINAPI DllRegisterServer(void){
         RegSetSZ(HKEY_CLASSES_ROOT,k1,NULL,e.label);
         RegSetSZ(HKEY_CLASSES_ROOT,k2,NULL,dll);
         RegSetSZ(HKEY_CLASSES_ROOT,k2,L"ThreadingModel",L"Apartment");
+        // Run in-process (no surrogate) — eliminates inter-process delay
+        RegSetDWORD(HKEY_CLASSES_ROOT,k1,L"DisableProcessIsolation",1);
     }
     struct{const wchar_t*ext;const wchar_t*clsid;}exts[]={
         {L".hdr",CLSID_HDR_STR},{L".exr",CLSID_EXR_STR},
@@ -356,6 +365,17 @@ HRESULT WINAPI DllRegisterServer(void){
         RegSetSZ(HKEY_CLASSES_ROOT,k,NULL,e.clsid);
     }
     SHChangeNotify(SHCNE_ASSOCCHANGED,SHCNF_IDLIST,NULL,NULL);
+
+    // Register as approved shell extension — enables persistent thumbnail caching
+    static const wchar_t* APPROVED =
+        L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
+    struct{const wchar_t*clsid;const wchar_t*label;}approved[]={
+        {CLSID_HDR_STR,L"HDR Thumbnail Provider"},
+        {CLSID_EXR_STR,L"EXR Thumbnail Provider"},
+    };
+    for(auto&e:approved)
+        RegSetSZ(HKEY_LOCAL_MACHINE,APPROVED,e.clsid,e.label);
+
     return S_OK;
 }
 
@@ -366,6 +386,14 @@ HRESULT WINAPI DllUnregisterServer(void){
         wchar_t k[256];
         wsprintfW(k,L"CLSID\\%s\\InprocServer32",c);RegDeleteKeyW(HKEY_CLASSES_ROOT,k);
         wsprintfW(k,L"CLSID\\%s",c);RegDeleteKeyW(HKEY_CLASSES_ROOT,k);
+        // Remove from Approved
+        HKEY hk;
+        if(RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+            L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved",
+            0,KEY_SET_VALUE,&hk)==ERROR_SUCCESS){
+            RegDeleteValueW(hk,c);
+            RegCloseKey(hk);
+        }
     }
     const wchar_t*exts[]={L".hdr",L".exr"};
     for(auto e:exts){
