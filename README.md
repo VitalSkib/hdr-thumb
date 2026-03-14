@@ -97,7 +97,7 @@ hdr-thumb/
 ├── include/
 │   ├── stb_image.h          — stb_image (Public Domain)
 │   ├── tinyexr.h            — tinyexr v0.9.5 (BSD 3-Clause)
-│   └── lunasvg.h            — copy from lunasvg_src/include/ after step 1
+│   └── lunasvg.h            — lunasvg header (MIT)
 ├── lib/
 │   └── liblunasvg.a         — built by build_lunasvg.bat (not in repo)
 ├── build.bat                — main build script
