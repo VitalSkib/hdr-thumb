@@ -1,8 +1,8 @@
 # hdr-thumb
 
-**HDR + EXR Thumbnail Provider for Windows Explorer**
+**HDR / EXR / TGA / SVG Thumbnail Provider for Windows Explorer**
 
-Adds native thumbnail previews for `.hdr` (Radiance) and `.exr` (OpenEXR) files directly in Windows Explorer — no third-party software required.
+Adds native thumbnail previews for `.hdr`, `.exr`, `.tga` and `.svg` files directly in Windows Explorer — no third-party software required.
 
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4?logo=windows)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
@@ -14,10 +14,12 @@ Adds native thumbnail previews for `.hdr` (Radiance) and `.exr` (OpenEXR) files 
 
 - `.hdr` — Radiance RGBE format via [stb_image](https://github.com/nothings/stb)
 - `.exr` — OpenEXR scanline **and tiled** via [tinyexr](https://github.com/syoyo/tinyexr)
-- Reinhard tone mapping + sRGB gamma (2.2) for correct HDR-to-screen conversion
+- `.tga` — Targa via [stb_image](https://github.com/nothings/stb)
+- `.svg` — Full SVG 1.1 via [lunasvg](https://github.com/sammycage/lunasvg) — CSS, currentColor, gradients, transparent background
+- Reinhard tone mapping + sRGB gamma for HDR/EXR
 - Bilinear downscaling to any thumbnail size Windows requests
-- Single DLL, no runtime dependencies, no installer required
-- Supports files up to 512 MB
+- Single DLL, no runtime dependencies, no installer
+- File size limit: 512 MB per file
 
 ---
 
@@ -31,19 +33,29 @@ Adds native thumbnail previews for `.hdr` (Radiance) and `.exr` (OpenEXR) files 
 ## Installation (pre-built DLL)
 
 1. Download `hdr_thumb.dll` from [Releases](../../releases)
-2. Copy it anywhere permanent, e.g. `C:\Windows\System32\`
+2. Copy to `C:\Windows\System32\`
 3. Open **Command Prompt as Administrator** and run:
 
 ```cmd
 regsvr32 "C:\Windows\System32\hdr_thumb.dll"
 ```
 
-4. Open any folder with `.hdr` or `.exr` files — thumbnails appear immediately.
+4. Open any folder with `.hdr`, `.exr`, `.tga` or `.svg` files — thumbnails appear immediately.
+
+If thumbnails do not appear, flush the cache:
+
+```cmd
+taskkill /f /im explorer.exe
+del /f /q "%LocalAppData%\Microsoft\Windows\Explorer\thumbcache_*.db"
+del /f /q "%LocalAppData%\Microsoft\Windows\Explorer\iconcache_*.db"
+start explorer.exe
+```
 
 ### Uninstall
 
 ```cmd
 regsvr32 /u "C:\Windows\System32\hdr_thumb.dll"
+del "C:\Windows\System32\hdr_thumb.dll"
 ```
 
 ---
@@ -53,50 +65,72 @@ regsvr32 /u "C:\Windows\System32\hdr_thumb.dll"
 ### Requirements
 
 - [MinGW-w64](https://www.mingw-w64.org/) with GCC 13+ (UCRT, x86_64)
-- Windows SDK headers (included with MinGW)
+- [CMake](https://cmake.org/) — for building lunasvg
+- [Git](https://git-scm.com/) — for cloning lunasvg, or download ZIP manually
 
-### Steps
+### Step 1 — Build lunasvg static library (once)
+
+Download [lunasvg](https://github.com/sammycage/lunasvg) source (with the `plutovg` subfolder included) and place it at `C:\mingw64\lunasvg_src\`, then run:
 
 ```cmd
-git clone https://github.com/YOUR_USERNAME/hdr-thumb.git
-cd hdr-thumb
+build_lunasvg.bat
+```
+
+This produces:
+- `lib\liblunasvg.a`
+- `include\lunasvg.h`
+
+### Step 2 — Build the DLL
+
+```cmd
 build.bat
 ```
 
-Output: `build\hdr_thumb.dll`
+Output: `hdr_thumb.dll`
 
 ### Directory structure
 
 ```
 hdr-thumb/
 ├── src/
-│   └── hdr_thumb.cpp       — full source, single translation unit
+│   └── hdr_thumb.cpp        — full source, single translation unit
 ├── include/
-│   ├── stb_image.h         — stb_image (Public Domain)
-│   └── tinyexr.h           — tinyexr v0.9.5 (BSD 3-Clause)
-├── build.bat               — MinGW build script
-├── register.bat            — quick register helper (run as Admin)
+│   ├── stb_image.h          — stb_image (Public Domain)
+│   ├── tinyexr.h            — tinyexr v0.9.5 (BSD 3-Clause)
+│   └── lunasvg.h            — copy from lunasvg_src/include/ after step 1
+├── lib/
+│   └── liblunasvg.a         — built by build_lunasvg.bat (not in repo)
+├── build.bat                — main build script
+├── build_lunasvg.bat        — builds lunasvg static library
 └── README.md
 ```
+
+> `lib\liblunasvg.a` is not included in the repository.
+> Run `build_lunasvg.bat` once to generate it before building the DLL.
 
 ---
 
 ## How it works
 
 Windows Shell calls `IThumbnailProvider::GetThumbnail()` when Explorer needs a preview.
-The DLL reads the file stream, decodes it to linear float RGB, applies
-Reinhard tone mapping and sRGB gamma, then returns an `HBITMAP` to the shell.
+The DLL reads the file stream and dispatches to the appropriate decoder:
 
-For tiled EXR files the tiles are assembled into a contiguous buffer before scaling.
+- **HDR/EXR** — decoded to linear float RGB, Reinhard tone mapping applied, converted to sRGB
+- **TGA** — decoded directly to 8-bit RGBA, no tone mapping
+- **SVG** — rendered by lunasvg to premultiplied ARGB with transparent background
+
+For tiled EXR files tiles are assembled into a contiguous buffer before scaling.
+SVG thumbnails preserve transparency (`WTSAT_ARGB`), so Explorer composites them correctly over its own background.
 
 ---
 
 ## Third-party libraries
 
-| Library                                        | Author       | License             |
-| ---------------------------------------------- | ------------ | ------------------- |
+| Library | Author | License |
+|---|---|---|
 | [stb_image.h](https://github.com/nothings/stb) | Sean Barrett | Public Domain / MIT |
-| [tinyexr.h](https://github.com/syoyo/tinyexr)  | Syoyo Fujita | BSD 3-Clause        |
+| [tinyexr.h](https://github.com/syoyo/tinyexr) | Syoyo Fujita | BSD 3-Clause |
+| [lunasvg](https://github.com/sammycage/lunasvg) | Nwutobo Samuel Ugochukwu | MIT |
 
 ---
 
