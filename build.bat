@@ -1,46 +1,54 @@
 @echo off
-setlocal
+::
+:: build.bat — builds hdr_thumb.dll
+:: Location: C:\hdr_thumb\build.bat
+::
 
-set CXX=g++
+set "MINGW=C:\mingw64\bin"
+set "SRC=C:\hdr_thumb\src\hdr_thumb.cpp"
+set "OUT=C:\hdr_thumb\hdr_thumb.dll"
+set "INC=C:\hdr_thumb\include"
+set "LUNASVG_LIB=C:\hdr_thumb\lib\liblunasvg.a"
+set "PLUTOVG_LIB=C:\mingw64\lunasvg_src\build_mingw\plutovg\libplutovg.a"
 
-where %CXX% >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] g++ not found in PATH.
-    echo Add C:\mingw64\bin to PATH and reopen cmd.
-    exit /b 1
+if not exist "%LUNASVG_LIB%" (
+    echo ERROR: %LUNASVG_LIB% not found. Run build_lunasvg.bat first.
+    pause & exit /b 1
 )
 
-if not exist "include\stb_image.h" (
-    echo [ERROR] include\stb_image.h not found.
-    echo Download: https://raw.githubusercontent.com/nothings/stb/master/stb_image.h
-    exit /b 1
+if not exist "%PLUTOVG_LIB%" (
+    echo ERROR: %PLUTOVG_LIB% not found. Run build_lunasvg.bat first.
+    pause & exit /b 1
 )
 
-if not exist "include\tinyexr.h" (
-    echo [ERROR] include\tinyexr.h not found.
-    echo Download: https://raw.githubusercontent.com/syoyo/tinyexr/master/tinyexr.h
-    exit /b 1
+if not exist "%SRC%" (
+    echo ERROR: %SRC% not found.
+    pause & exit /b 1
 )
 
-if not exist "build" mkdir build
+echo.
+echo === Building hdr_thumb.dll ===
+echo.
 
-echo [*] Compiling hdr_thumb.dll ...
-
-%CXX% -std=c++17 -O2 -shared ^
-    -o build\hdr_thumb.dll ^
-    src\hdr_thumb.cpp ^
-    src\hdr_thumb.def ^
-    -I include ^
-    -lole32 -loleaut32 -luuid -lgdi32 -lshlwapi -lshell32 ^
+"%MINGW%\g++.exe" -std=c++17 -O2 -Wall ^
+    -I "%INC%" ^
+    -DLUNASVG_BUILD_STATIC ^
+    -shared -o "%OUT%" "%SRC%" ^
+    "%LUNASVG_LIB%" "%PLUTOVG_LIB%" ^
+    -lshlwapi -lshell32 -lole32 -luuid -lgdi32 ^
     -static-libgcc -static-libstdc++ ^
-    -static ^
-    -Wall -Wno-unused-function
+    -Wl,-Bdynamic -lucrtbase -Wl,-Bstatic ^
+    -lwinpthread ^
+    -Wl,--kill-at
 
-if errorlevel 1 (
-    echo [FAIL] Build failed.
-    exit /b 1
+if %errorlevel% neq 0 (
+    echo.
+    echo  BUILD FAILED
+    echo.
+    pause & exit /b 1
 )
 
-echo [OK] build\hdr_thumb.dll ready.
-echo Run register.bat as Administrator to install.
-endlocal
+echo.
+echo  BUILD OK: %OUT%
+echo.
+pause
