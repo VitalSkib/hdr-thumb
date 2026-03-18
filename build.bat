@@ -35,20 +35,19 @@ echo.
     -DLUNASVG_BUILD_STATIC ^
     -shared -o "%OUT%" "%SRC%" ^
     "%LUNASVG_LIB%" "%PLUTOVG_LIB%" ^
-    -lshlwapi -lshell32 -lole32 -luuid -lgdi32 ^
-    -static-libgcc -static-libstdc++ ^
+    -lshlwapi -lshell32 -lole32 -luuid -lgdi32 -lmsimg32 ^
+    -static-libgcc -static-libstdc++ -static ^
     -Wl,-Bdynamic -lucrtbase -Wl,-Bstatic ^
-    -lwinpthread ^
     -Wl,--kill-at
 
 if %errorlevel% neq 0 (
     echo.
-    echo  BUILD FAILED
+    echo BUILD FAILED
     echo.
     pause & exit /b 1
 )
 
 echo.
-echo  BUILD OK: %OUT%
+echo BUILD OK: %OUT%
 echo.
 pause
