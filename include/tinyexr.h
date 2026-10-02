@@ -7043,6 +7043,13 @@ static const char *ReadAttribute(std::string *name, std::string *ty,
 
   tinyexr::swap4(reinterpret_cast<unsigned int *>(&data_len));
 
+  if (data_len == 0) {
+    // Zero-length attribute (Houdini writes empty comment/date/owner strings):
+    // data->at(0) below would throw. Store a lone '\0' instead.
+    data->assign(1, 0);
+    return p;
+  }
+
   data->resize(static_cast<size_t>(data_len));
   memcpy(&data->at(0), p, static_cast<size_t>(data_len));
   p += data_len;
@@ -7270,6 +7277,13 @@ static void CompressZip(unsigned char *dst, unsigned long long &compressedSize,
 static void DecompressZip(unsigned char *dst,
                           unsigned long *uncompressed_size /* inout */,
                           const unsigned char *src, unsigned long src_size) {
+  if (*uncompressed_size == src_size) {
+    // Chunk stored uncompressed: OpenEXR does this when compressing doesn't
+    // shrink it (upstream tinyexr issue 40).
+    memcpy(dst, src, src_size);
+    return;
+  }
+
   std::vector<unsigned char> tmpBuf(*uncompressed_size);
 
 #if TINYEXR_USE_MINIZ
@@ -7477,6 +7491,12 @@ static void CompressRle(unsigned char *dst, unsigned long long &compressedSize,
 static void DecompressRle(unsigned char *dst,
                           const unsigned long uncompressed_size,
                           const unsigned char *src, unsigned long src_size) {
+  if (uncompressed_size == src_size) {
+    // Chunk stored uncompressed (see DecompressZip).
+    memcpy(dst, src, src_size);
+    return;
+  }
+
   std::vector<unsigned char> tmpBuf(uncompressed_size);
 
   int ret = rleUncompress(static_cast<int>(src_size),

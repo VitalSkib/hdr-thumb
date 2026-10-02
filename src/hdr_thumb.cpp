@@ -492,7 +492,7 @@ public:
         BYTE* buf = NULL; DWORD size = 0;
         HRESULT hr = ReadStream(m_pStream, &buf, &size, MaxFileBytes());
         if (FAILED(hr)) return hr;
-        HBITMAP hbm = Decode(buf, size, cx);
+        HBITMAP hbm = SafeDecode(buf, size, cx);
         free(buf);
         if (!hbm) return E_FAIL;
         *ph = hbm; return S_OK;
@@ -530,7 +530,7 @@ public:
         if (pw < 1) pw = 256;
         if (ph < 1) ph = 256;
         m_previewState.hasAlpha = IsSvg();
-        m_previewState.hbm = DecodeForPreview(buf, size, pw, ph);
+        m_previewState.hbm = SafeDecodeForPreview(buf, size, pw, ph);
         free(buf);
         if (!m_previewState.hbm) return E_FAIL;
         RegisterPreviewClass();
@@ -577,7 +577,7 @@ public:
         if (FAILED(hr)) return hr;
         UINT cx = (UINT)std::max(m_extractSize.cx, m_extractSize.cy);
         if (cx < 1) cx = 256;
-        HBITMAP hbm = Decode(buf, size, cx);
+        HBITMAP hbm = SafeDecode(buf, size, cx);
         free(buf);
         if (!hbm) return E_FAIL;
         *phBmpImage = hbm; return S_OK;
@@ -610,6 +610,15 @@ protected:
     // Default: use max dimension; SVG overrides to use exact size
     virtual HBITMAP DecodeForPreview(const BYTE* d, DWORD s, int pw, int ph) {
         return Decode(d, s, (UINT)std::min(std::max(pw, ph) * 2, 2048));
+    }
+
+    // The provider runs inside Explorer (DisableProcessIsolation), so a C++
+    // exception escaping a decoder takes Explorer down. Fail the file instead.
+    HBITMAP SafeDecode(const BYTE* d, DWORD s, UINT cx) {
+        try { return Decode(d, s, cx); } catch (...) { return NULL; }
+    }
+    HBITMAP SafeDecodeForPreview(const BYTE* d, DWORD s, int pw, int ph) {
+        try { return DecodeForPreview(d, s, pw, ph); } catch (...) { return NULL; }
     }
 
     void UnloadPreview() {
